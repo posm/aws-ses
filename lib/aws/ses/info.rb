@@ -15,7 +15,7 @@ module AWS
     #   # How many e-mails you can send per second
     #   response.max_send_rate
     #
-    # == Get detailed send statistics 
+    # == Get detailed send statistics
     # The result is a list of data points, representing the last two weeks of sending activity.
     # Each data point in the list contains statistics for a 15-minute interval.
     # GetSendStatisticsResponse#data_points is an array where each element is a hash with give string keys:
@@ -48,52 +48,15 @@ module AWS
     #         "DeliveryAttempts"=>"3",
     #         "Rejects"=>"0",
     #         "Complaints"=>"0"}]
-    
+
     module Info
       # Returns quota information provided by SES
-      # 
-      # The return format inside the response result will look like:
-      #   {"SentLast24Hours"=>"0.0", "MaxSendRate"=>"1.0", "Max24HourSend"=>"200.0"}
       def quota
-        request('GetSendQuota')
+        @ses.client.get_send_quota()
       end
-      
+
       def statistics
-        request('GetSendStatistics')
-      end
-    end
-    
-    class GetSendQuotaResponse < AWS::SES::Response
-      def result
-        parsed['GetSendQuotaResult']
-      end
-      
-      def sent_last_24_hours
-        result['SentLast24Hours']
-      end
-      
-      def max_24_hour_send
-        result['Max24HourSend']
-      end
-      
-      def max_send_rate
-        result['MaxSendRate']
-      end
-    end
-    
-    class GetSendStatisticsResponse < AWS::SES::Response
-      def result
-        if members = parsed['GetSendStatisticsResult']['SendDataPoints']
-          [members['member']].flatten
-        else
-          []
-        end
-      end
-      
-      memoized :result
-      
-      def data_points
-        result
+        @ses.client.get_send_statistics().send_data_points
       end
     end
   end

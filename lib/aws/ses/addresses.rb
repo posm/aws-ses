@@ -10,7 +10,7 @@ module AWS
     #   ses = AWS::SES::Base.new( ... connection info ... )
     #
     #   # Get a list of verified addresses
-    #   ses.addresses.list.result
+    #   ses.addresses.list
     #
     #   # Add a new e-mail address to verify
     #   ses.addresses.verify('jon@example.com')
@@ -23,53 +23,28 @@ module AWS
       end
 
       # List all verified e-mail addresses
-      # 
+      #
       # Usage:
-      # ses.addresses.list.result
+      # ses.addresses.list
       # =>
       # ['email1@example.com', email2@example.com']
       def list
-        @ses.request('ListVerifiedEmailAddresses')
+        @ses.client.list_verified_email_addresses().verified_email_addresses
       end
-      
+
       def verify(email)
-        @ses.request('VerifyEmailAddress',
-          'EmailAddress' => email
-        )
+        @ses.client.verify_email_address(email_address: email)
       end
-      
+
       def delete(email)
-        @ses.request('DeleteVerifiedEmailAddress',
-          'EmailAddress' => email
-        )
+        @ses.client.delete_verified_email_address(email_address: email)
       end
     end
-    
-    class ListVerifiedEmailAddressesResponse < AWS::SES::Response
-      def result
-        if members = parsed['ListVerifiedEmailAddressesResult']['VerifiedEmailAddresses']
-          [members['member']].flatten
-        else
-          []
-        end
-      end
-      memoized :result
-    end
-    
-    class VerifyEmailAddressResponse < AWS::SES::Response
-    end
-    
-    class DeleteVerifiedEmailAddressResponse < AWS::SES::Response
-      def result
-        success?
-      end
-    end
-    
+
     class Base
       def addresses
         @addresses ||= Addresses.new(self)
       end
     end
-    
   end
 end

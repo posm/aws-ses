@@ -50,24 +50,43 @@ module AWS
       # @option options
       # @return [Response] the response to sending this e-mail
       def send_email(options = {})
-        package     = {}
+        package = {}
 
-        package['Source'] = options[:source] || options[:from]
+        package[:source] = options[:source] || options[:from]
 
-        add_array_to_hash!(package, 'Destination.ToAddresses', options[:to]) if options[:to]
-        add_array_to_hash!(package, 'Destination.CcAddresses', options[:cc]) if options[:cc]
-        add_array_to_hash!(package, 'Destination.BccAddresses', options[:bcc]) if options[:bcc]
+        destinations = {}
+        destinations[:to_addresses] = options[:to] if options[:to]
+        destinations[:cc_addresses] = options[:cc] if options[:cc]
+        destinations[:bcc_addresses] = options[:bcc] if options[:bcc]
+        package[:destination] = destinations
 
-        package['Message.Subject.Data'] = options[:subject]
+        package[:message] = {
+          subject: { data: options[:subject] },
+          body: { }
+        }
 
-        package['Message.Body.Html.Data'] = options[:html_body] if options[:html_body]
-        package['Message.Body.Text.Data'] = options[:text_body] || options[:body] if options[:text_body] || options[:body]
+        if options[:html_body]
+          package[:message][:body][:html] = { data: options[:html_body] }
+        end
+        if options[:text_body] || options[:body]
+          package[:message][:body][:text] =
+            { data: options[:text_body] || options[:body] }
+        end
+        if options[:return_path]
+          package[:return_path] = options[:return_path]
+        end
+        if options[:reply_to]
+          package[:reply_to_addresses] = options[:reply_to]
+        end
+        package[:source_arn] = @source_arn if @source_arn
 
-        package['ReturnPath'] = options[:return_path] if options[:return_path]
-
-        add_array_to_hash!(package, 'ReplyToAddresses', options[:reply_to]) if options[:reply_to]
-
-        request('SendEmail', package)
+        puts "Calling send_email: #{package}"
+        resp = @client.send_email(package)
+        puts "Response: #{resp}"
+        resp
+      rescue => e
+        puts e.message
+        puts e.backtrace
       end
 
       # Sends using the SendRawEmail method
@@ -96,64 +115,32 @@ module AWS
       # @option args [String] :to alias for :destinations
       # @return [Response]
       def send_raw_email(mail, args = {})
+        puts "send_raw_email: mail=#{mail.inspect} args=#{args}"
         message = mail.is_a?(Hash) ? Mail.new(mail) : mail
-        raise ArgumentError, "Attachment provided without message body" if message.has_attachments? && message.text_part.nil? && message.html_part.nil?
+        if message.has_attachments? && message.text_part.nil? && message.html_part.nil?
+          raise ArgumentError, "Attachment provided without message body"
+        end
 
-        raw_email = build_raw_email(message, args)
-        result = request('SendRawEmail', raw_email)
-        message.message_id = "#{result.parsed['SendRawEmailResult']['MessageId']}@email.amazonses.com"
-        result
+        options = { }
+        options[:from] = message.from.first
+        options[:from] = args[:from] if args[:from]
+        options[:from] = args[:source] if args[:source]
+        options[:to] = message.to if message.to
+        options[:to] = args[:to] if args[:to]
+        options[:cc] = message.cc if message.cc
+        options[:cc] = args[:cc] if args[:cc]
+        options[:bcc] = message.bcc if message.bcc
+        options[:bcc] = args[:bcc] if args[:bcc]
+        options[:subject] = message.subject
+        options[message.mime_type == 'text/html' ? :html_body : :text_body] = message.body.decoded
+        options[:return_path] = message.return_path if message.return_path
+        options[:reply_to] = message.reply_to if message.reply_to
+
+        send_email(options)
       end
 
       alias :deliver! :send_raw_email
       alias :deliver  :send_raw_email
-
-      private
-
-      def build_raw_email(message, args = {})
-        # the message.to_s includes the :to and :cc addresses
-        package = { 'RawMessage.Data' => Base64::encode64(message.to_s) }
-        package['Source'] = args[:from] if args[:from]
-        package['Source'] = args[:source] if args[:source]
-        if args[:destinations]
-            add_array_to_hash!(package, 'Destinations', args[:destinations])
-        else
-          mail_addresses = [message.to, message.cc, message.bcc].flatten.compact
-          args_addresses = [args[:to], args[:cc], args[:bcc]].flatten.compact
-
-          mail_addresses = args_addresses unless args_addresses.empty?
-
-          add_array_to_hash!(package, 'Destinations', mail_addresses)
-        end
-        package
-      end
-
-      # Adds all elements of the ary with the appropriate member elements
-      def add_array_to_hash!(hash, key, ary)
-        cnt = 1
-        [*ary].each do |o|
-          hash["#{key}.member.#{cnt}"] = o
-          cnt += 1
-        end
-      end
-    end
-
-    class EmailResponse < AWS::SES::Response
-      def result
-        super["#{action}Result"]
-      end
-
-      def message_id
-        result['MessageId']
-      end
-    end
-
-    class SendEmailResponse < EmailResponse
-
-    end
-
-    class SendRawEmailResponse < EmailResponse
-
     end
   end
 end
